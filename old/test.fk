@@ -1,0 +1,290 @@
+note
+  This is a test source file in the programming language Frank.
+
+note
+  Layout in Frank is really dumb. Each left-anchored line begins a new
+  top-level block, containing all the tokens until the next left-anchored
+  line. Other spacing is unimportant. A block beginning "note" is a comment.
+
+note
+  Frank's type system relates three notions
+    (1) value types, of things which *are*
+    (2) computation types, of things which *do*
+    (3) effect signatures, which specify what one *can*
+
+note
+  Some perfectly ordinary datatypes follow. List is parametrized.
+
+data Nat
+  = zero
+  | suc Nat
+
+data List X
+  = nil
+  | X :: (List X)
+
+note
+  Type constructors are always prefix and capitalized.
+  Type variables are always capitalized.
+  Value constructors are uncapitalized and form *templates*
+    with places given by the things which are types.
+  So :: is infix.
+
+note
+  Here are some perfectly ordinary functions.
+
+Nat + Nat [] Nat
+zero  + y = y
+suc x + y = suc (x + y)
+
+(List X) ++ (List X) [] List X
+nil        ++ ys = ys
+(x :: xs)  ++ ys = x :: (xs ++ ys)
+
+note
+  These definitions declare a function template, where the types show
+  the places for inputs. The [] (pronounced "returns") marks the end
+  of the template and the beginning of the output type.
+  You can drop [] (), if the output is the unit type.
+
+dull Nat
+dull zero = ()
+dull (suc n) = dull n
+
+note
+  An effect signature is also prefix and capitialized. It describes a
+  bunch of commands. Again [] means "returns" and you can drop [] ().
+
+sig State S
+  = get [] S
+  | set S
+
+note
+  Here's how to describe a way to run a stateful process.
+  The type [State S ? X] is the type of *requests* from stateful processes.
+  A request is either [x] ("return x", where x is an X) or
+  [command ? continuation].
+  Frank's ? construct allows a function from a request type to
+  *handle* a process.
+
+state S [State S ? X]  [] X
+state s [x]            = x
+state s [get ? k]      = state s ? k s
+state _ [set s ? k]    = state s ? k ()
+
+note
+  Unlike eff, Frank does not automatically compose the handler to the
+  continuation. Ultimately, there's no great difference in expressivity,
+  but this way is a little more first-order, and it's easier for the
+  handler to evolve. Here, for example, we handle the continuation for
+  set s using a suitably updated handler.
+
+
+note
+  Here's the Abort effect signature and one way to run it.
+  Frank currently does not allow polymorphic commands, so let's
+  use the empty type, {}.
+
+sig Abort
+  = aborting [] {}
+
+data Maybe X
+  = yes X
+  | no
+
+catch [Abort ? X] [] Maybe X
+catch [x]             = yes x
+catch [aborting ? k]  = no
+
+note
+  To invoke a command with no arguments, use a postfix "!". Without
+  arguments, a function symbol stands for the function itself, not the
+  result of invoking it. f is pure, but (f !) may not be.
+
+  Our aborting command has no arguments, so needs a !. It returns an
+  element of {}, which can be mapped to any type by the postfix {} operator,
+  pronounced "bunk".
+
+abort [Abort] X
+abort = aborting! {}
+
+
+note Nonempty {..}, pronounced "thunk", make a value type from a
+  computation type. You can think of a thunk as a "suspended
+  computation", and the fact that "suspenders" is American for
+  "braces" is handily mnemonic.  Frank distinguishes value type X (of
+  X values) from value type {[] X} of suspended computations that
+  return X values.
+
+  That distinction allows us to write control operators.
+
+note
+  Bool is built in, as if
+  data Bool = tt | ff
+
+if Bool then {[] X} else {[] X} [] X
+if tt then t else e = t!
+if ff then t else e = e!
+
+note The above if-then-else chooses which thunk to invoke. To
+  construct thunks, write expressions in {..}, so it looks
+  suspiciously like C. We may observe that
+
+    catch ? if tt then {zero} else {abort!}  =  yes zero
+
+  Contrast with the conditional function.
+
+cond Bool X X [] X
+cond tt t f = t
+cond ff t f = f
+
+note We'll find that
+
+    catch ? cond tt zero (abort!)  =  no
+
+  because the (abort!) is evaluated.
+
+
+note The reason [] is a bracket, not a :, is that it isn't always
+  empty.  It contains a bunch of signatures for effects the function
+  is allowed to do. Here's safe subtraction, which we can write
+  directly, thus.
+
+Nat - Nat [Abort] Nat
+x     - zero   = x
+zero  - suc y  = abort!
+suc x - suc y  = x - y
+
+note
+  You can invoke subtraction only where Abort is enabled, e.g., inside
+  catch. Frank programs are checked with respect to an ambient bunch of
+  signatures. The ? construct locally extends the ambient bunch of
+  signatures.
+
+note
+  Here's a little higher-order entertainment for you. A function type
+  is a computation type, and can thus be thunked. Thunks are always
+  pure, even if the function being thunked might perform some effects.
+  The inner [] could indeed contain some signatures, and if it does,
+  well, those signatures need to be enabled anywhere you *invoke* the
+  function.
+
+map {A -> [] B} (List A) [] List B
+map f nil        = nil
+map f (a :: as)  = f a :: map f as
+
+note
+  You are at liberty to suppress an empty [] in a computation type,
+  but be aware! When you write a function type, each [sigs] it contains
+  is really an *action* on the ambient signature, meaning "sigs extending
+  the ambient signature". That's to say, the types are ever so slightly
+  effect-polymorphic. For map, below, the meaning is that whatever effects
+  are available when map is invoked may be used at each element, too. Our
+  map is really Haskell's "mapM". The upshot is that you can write this:
+
+subs (List Nat) Nat [Abort] List Nat
+subs xs n = map {m -> m - n} xs
+
+note
+  But there's a subtlety. Consider trees represented with functional
+  branching. Each node packs a *pure* function from Bool.
+
+data Tree X
+  = leaf X
+  | node {Bool -> Tree X}
+
+note
+  The following definition of tree mapping is disallowed
+
+  tmap {A -> B} (Tree A) [] Tree B
+  tmap f (leaf a)  = leaf (f a)
+  tmap f (node g)  = node {b -> tmap f (g b)}
+
+  The type of f, longhand, is {A -> [] B} meaning that f can do
+  whatever the ambient effects are when tmap is invoked. But we
+  use f inside a node, where the function must be pure, so the
+  typechecker refuses.
+
+  The following is, however, accepted. Here, the signature in f's type
+  says {}, which as a signature is pronounced "pure". Its action on
+  the ambient signature is to empty it.
+
+tmap {A -> [{}] B} (Tree A) [] Tree B
+tmap f (leaf a)  = leaf (f a)
+tmap f (node g)  = node {b -> tmap f (g b)}
+
+note
+  You can't make a dangerous, nearly broken tree, like this.
+
+  subt (Tree Nat) Nat [Abort] Tree Nat
+  subt xt n = tmap {m -> m - n} xt
+
+note
+  But safe mapping is ok.
+
+addt (Tree Nat) Nat [] Tree Nat
+addt xt n = tmap {m -> m + n} xt
+
+note
+  Of course you can do something like.
+
+mkNode (Tree X) (Tree X) [] Tree X
+mkNode l r = node {tt -> l | ff -> r}
+
+tmapOk {A -> B} (Tree A) [] Tree B
+tmapOk f (leaf a) = leaf (f a)
+tmapOk f (node g) = mkNode (tmapOk f (g tt)) (tmapOk f (g ff))
+
+
+note
+  Here's a bit of stateful fun.
+  The defined command "bong" returns the value of a Boolean state
+  but flips it.
+
+not Bool [] Bool
+not tt = ff
+not ff = tt
+
+X but () [] X
+x but c = x
+
+bong [State Bool] Bool
+bong = get! but set (not (get!))
+
+
+note
+  So if we define pairing...
+
+data Pair A B = A & B
+
+note
+  ...we get
+
+   state ff ? bong! & bong!  =  ff & tt
+
+
+note
+  Bits and Pieces for examples
+
+two [] Nat
+two = suc (suc zero)
+
+note
+  I must allow the definition of non-functional values.
+
+note
+  main [] Nat
+  main = two! + two!
+
+note
+  main [] Maybe Nat
+  main = catch ? if tt then {zero} else {abort!}
+
+note
+  main [Abort] List Nat
+  main = subs (two ! :: (two ! :: nil)) (suc zero)
+
+main [Console] Char
+main = inch!
+
+

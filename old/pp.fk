@@ -1,0 +1,30 @@
+data Nat
+  = zero
+  | suc Nat
+
+sig State S
+  = get [] S
+  | put S [] ()
+
+X << Y [] X
+x << y = x
+
+next [State Nat] Nat
+next = get! << put (suc (get!))
+
+state S [State S ? X] [] X
+state s [x] = x
+state s [get ? k] = state s ? k s
+state s [put s' ? k] = state s' ? k ()
+
+data List X
+  = nil
+  | X :: (List X)
+
+map {X -> [] Y} (List X) [] List Y
+map f nil = nil
+map f (x :: xs) = f x :: map f xs
+
+main [] List Nat
+main = state zero ? map {() -> next!} (() :: (() :: (() :: nil)))
+

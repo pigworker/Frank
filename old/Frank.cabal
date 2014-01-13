@@ -1,0 +1,27 @@
+name:			Frank
+version:		0.3
+synopsis:		An experimental programming language with typed algebraic effects
+description:	   An experimental programming language with typed algebraic effects
+license:		PublicDomain
+author:			Conor McBride
+build-type:		Simple
+cabal-version:		>= 1.8
+homepage:		http://personal.cis.strath.ac.uk/~conor/pub/Frank/
+stability:		experimental
+category:		Languages
+license-file:		LICENCE
+maintainer:		conor@strictlypositive.org
+extra-source-files:	test.fk hello.fk keylog.fk
+
+executable frank
+  main-is:		Main.lhs
+  build-depends:	base < 5, void, newtype, mtl, she
+  extensions:		TypeOperators, KindSignatures, GADTs, TypeSynonymInstances, FlexibleInstances, GeneralizedNewtypeDeriving, TupleSections, FunctionalDependencies, PatternGuards, MultiParamTypeClasses
+  ghc-options:		-F -pgmF she
+  other-modules:	Gubbins, Pa, Types, Template, Syntax, Check, ElabMonad, Unify, Elab, Run
+
+source-repository head
+  type:		  darcs
+  location:	  http://personal.cis.strath.ac.uk/~conor/pub/Frank/
+
+

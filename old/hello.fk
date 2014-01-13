@@ -1,0 +1,8 @@
+data List X = nil | X :: (List X)
+
+map {X -> Y} (List X)   []   List Y
+map f nil        = nil
+map f (x :: xs)  = f x :: map f xs
+
+main [Console] List ()
+main = map ouch ('h' :: ('e' :: ('l' :: ('l' :: ('o' :: nil)))))

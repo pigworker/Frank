@@ -1,7 +1,10 @@
+*~
 dist
 cabal-dev
 *.o
 *.hi
 *.chi
 *.chs.h
+*.hers
+frank
 .virthualenv

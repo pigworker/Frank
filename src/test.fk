@@ -1,0 +1,49 @@
+sig Abort
+  = abort [] X
+
+default X [Abort ? X] [] X
+default _ [x] = x
+default x [abort ? k] = x
+
+sig Except E
+  = throw E [] X
+
+sig State S
+  = get [] S
+  | put S []
+
+data Nat = zero | suc Nat
+
+X << Y [] X
+x << y = x
+
+next [State Nat] Nat
+next = get << put (suc get)
+
+state S [State S ? X] [] X
+state _ [x] = x
+state s [get ? k] = state s ? k s
+state _ [put s ? k] = state s ? k ()
+
+data List X = nil | X :> (List X)
+
+map {S -> T} (List S) [] List T
+map f nil = nil
+map f (x :> xs) = f x :> map f xs
+
+sig Flaky S
+  = fread [Abort] S
+
+case X of {X -> Y} [] Y
+case x of f = f x
+
+fnom [Flaky Nat ? X] [Abort, Console] X
+fnom [x] = x
+fnom [fread ? k] = case inch of
+  {  '1' -> fnom ? k (suc zero)
+  |  '2' -> fnom ? k (suc (suc zero))
+  |  _ -> abort
+  }
+
+main [Console] Nat
+main = default zero ? fnom ? fread

@@ -1,0 +1,117 @@
+sig ReadLine
+  = peek [] Char
+  | nom
+
+sig Abort
+  = aborting [] {}
+
+abort [Abort] X
+abort = aborting ! {}
+
+if Bool then {[] X} else {[] X} [] X
+if tt then t else f = t!
+if ff then t else f = f!
+
+() >> Y [] Y
+_ >> y = y
+
+X << () [] X
+x << _ = x
+
+data List X
+  = nil
+  | X :: (List X)
+
+data SExp
+  = atom (List Char)
+  | SExp & SExp
+
+case X of {X -> [] Y} [] Y
+case x of f = f x
+
+sexp [ReadLine, Abort] SExp
+sexp = case peek! of
+  { ' '  -> nom! >> sexp!
+  | '\n' -> nom! >> sexp!
+  | '.'  -> abort!
+  | ')'  -> abort!
+  | '('  -> nom! >> open!
+  | _    -> atom (name!)
+  }
+
+open [ReadLine, Abort] SExp
+open = case peek! of
+  { ' '  -> nom! >> open!
+  | '\n' -> nom! >> open!
+  | '.'  -> abort!
+  | ')'  -> nom! >> atom nil
+  | _    -> sexp! & cdr!
+  }
+
+cdr [ReadLine, Abort] SExp
+cdr = case peek! of
+  { ' '  -> nom! >> cdr!
+  | '\n' -> nom! >> cdr!
+  | '.'  -> nom! >> (sexp! << close!)
+  | _    -> open!
+  }
+
+close [ReadLine, Abort] ()
+close = case peek! of
+  { ' '  -> nom! >> close!
+  | '\n' -> nom! >> close!
+  | ')'  -> nom!
+  | _    -> abort!
+  }
+
+name [ReadLine, Abort] List Char
+name = case peek! of
+  { c -> if elem c (punc!)
+          then {nil}
+          else {nom! >> (c :: name!)}
+  }
+
+punc [] List Char
+punc = '\n' :: (' ' :: ('(' :: (')' :: ('.' :: nil))))
+
+elem Char (List Char) [] Bool
+elem c nil = ff
+elem c (c' :: cs) = if (c =Char= c') then {tt} else {elem c cs}
+
+data Maybe X = no | yes X
+
+noBS (Maybe Char) [ReadLine ? X] [Console] X
+noBS _ [x] = x
+noBS no [peek ? k] = case inch! of {c -> noBS (yes c) ? k c}
+noBS (yes c) [peek ? k] = noBS (yes c) ? k c
+noBS _ [nom ? k] = noBS no ? k ()
+
+data Stk X
+  = (Stk X) -peek {Char -> [ReadLine, Abort] X}
+  | (Stk X) -nom
+  | root {[ReadLine, Abort] X}
+
+withBS (Stk X) (Maybe Char) [ReadLine, Abort, {} ? X] [Console] X
+withBS stk _ [x] = x
+withBS stk no [peek ? k] = case inch! of
+  { '\b' -> pop stk
+  | c -> withBS (stk -peek k) (yes c) ? k c
+  }
+withBS stk (yes c) [peek ? k] = withBS stk (yes c) ? k c
+withBS stk (yes c) [nom ? k] = ouch c >> withBS (stk -nom) no ? k ()
+withBS stk _ [aborting ? l] = pop stk
+
+note There's a need for indexing here, to prevent nom! before peek!
+
+pop (Stk X) [Console] X
+pop (stk -peek k) = withBS stk no ? k (peek!)
+pop (stk -nom) = ouch '\b' >> (ouch ' ' >> (ouch '\b' >> pop stk))
+pop (root r) = withBS (root r) no ? r!
+
+main [Console] SExp
+main = withBS (root {sexp!}) no ? sexp!
+
+note
+  main [Console, Abort] SExp
+  main = noBS no ? sexp!
+

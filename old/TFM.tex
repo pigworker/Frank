@@ -1,0 +1,354 @@
+\documentclass{article}
+\usepackage{palatino}
+\usepackage{a4wide}
+\usepackage{pig}
+
+\parindent 0in
+\parskip 0.1in
+
+\begin{document}
+\title{The Frank Manual}
+\author{Conor McBride}
+\maketitle
+
+Shall we be pure or impure? \textbf{Frank} is a strongly typed functional programming language answering this question `Yes.'. Frank is heavily influenced by Paul Blain Levy's call-by-push-value calculus, and follows that work in distinguishing values \emph{being} and computations \emph{doing}.\footnote{The interplay between doing and being, like strangers in the night exchanging glances, provoked the name.} Mais, aussi, c'est la nostalgie de la boue. I designed Frank because I miss programming in ML as much as I enjoy the discipline of Haskell.
+
+Frank bears a considerable conceptual resemblance to Bauer and Pretnar's \textbf{eff}: the two were developed independently around the same time in central Scotland, a fine tradition. I first described Frank at the workshop on Effects in Type Theory, Tallinn, December 2007, but have done very little about it until now. Frank, at time of writing, has the more developed type system, tracking effect permissions as well as value compatibility, but eff has a much clearer semantics. I view Frank primarily as a learning experience on my own part, but I hope it proves of some small value, before I eff off back to type theory.
+
+\textbf{Health warning.~} The current Frank implementation is but a few days' work. `Rough and ready' is half right.
+
+I should like to thank Hugo Herbelin for giving me a place to hide while I did this, and taking an interest, and asking me lots of questions to which I need to know the answer, and telling me about lots of things I should read.
+I apologise in advance for not having read them yet.
+
+Conor McBride\\
+Paris, April 2012.
+
+
+\section{Getting Started}
+
+Frank is implemented in Haskell and can be downloaded from
+Hackage with the incantation
+\[
+  \texttt{cabal install frank}
+\]
+Unfortunately, Frank is written making heavy use of the Strathclyde Haskell Enhancement, so you may find that \texttt{cabal} infects your computer with it, whether you like it or not.\footnote{SHE provides
+`idiom brackets', in many ways a forerunner to Frank. I would not be without them.} The package delivers an executable, \texttt{frank},
+which is a typechecker and interpreter. If you issue the command
+\[
+  \texttt{frank myfile}
+\]
+the system will seek a file \texttt{myfile.fk} and attempt to make sense of then execute its contents, checking for some pathologies, whilst completely ignoring others. Error diagnostics, while not nonexistent, are
+currently somewhat inscrutable, for which I apologise in advance.
+
+What might you put in your file? I wrote a file called \texttt{hello.fk} containing the following\ldots
+\begin{verbatim}
+data List X = nil | X :: (List X)
+
+map {X -> Y} (List X)   []   List Y
+map f nil        = nil
+map f (x :: xs)  = f x :: map f xs
+
+main [Console] List ()
+main = map ouch ('h' :: ('e' :: ('l' :: ('l' :: ('o' :: nil)))))
+\end{verbatim}
+\ldots and then this happened:
+\begin{verbatim}
+bash-3.2$ frank hello
+hello(() :: (() :: (() :: (() :: (() :: nil)))))
+\end{verbatim}
+What might one glean from this?
+\begin{enumerate}
+\item Frank allows the definition of parametrized inductive datatypes, such as \texttt{List X}, where such definitions are introduced by the keyword \texttt{data}. Type level identifiers --- constructors and variables --- begin in Uppercase. After the \texttt{=} sign, you give a choice of constructors, separated by \texttt{|}s. Constructors are \emph{symbolic}, i.e. anything-but-beginning-Uppercase, and are not necessarily prefix.
+Too many parentheses are mandatory, as in \texttt{X :: (List X)}, but at
+least it is easy to read the declaration as a \emph{template}, with symbolic \emph{marks}, and value types standing in the \emph{places} where, upon usage, inhabitants of those types will go.
+\item You can write polymorphic higher-order functions, like \texttt{map}.
+\item Top-level functions have type signatures, which contain lots of funny brackets. The [square] brackets the principal connective
+of the signature. To the left of the brackets goes a \emph{template}, with symbolic marks and value types in places. To the right goes the value
+type obtained by invoking the function.
+\item Curly braces are somehow important. Braces, or only in American
+`suspenders', embed \emph{computation} types into value types. Computation types describe things which are \emph{done}, but a `way of doing something' \emph{is} something, and it is something distinct from either the act of doing it or its result. The \texttt{map} needs \texttt{f}, a way to compute \texttt{Y}s from \texttt{X}s, and in the \texttt{(x :: xs)} case, it \emph{does} \texttt{f} to \texttt{x}, as well as passing the value \texttt{f} into the recursive call on \texttt{xs}.
+\item Brackets are not always empty: inside, they list the \emph{effect signatures} required by a function. The \texttt{main} function, which takes no arguments, none the less needs access to \texttt{Console} effects, in order to output some characters, via the \texttt{ouch} command. The latter outputs one character, returning a value \texttt{()} of unit type, also  \texttt{()}. The \texttt{map} operation traverses the list of characters, emitting them sequentially. The \texttt{frank} runtime also prints the value which results.
+\item A good treatment of associative operators remains to be implemented, hence an excess of parentheses.
+\item The \texttt{map} operation is somehow effect-polymorphic. The \texttt{Console} effects required by \texttt{main} are somehow made available to the functional argument of \texttt{map}, which is why one can traverse with an impure operation like \texttt{ouch}. If you delete \texttt{Console} from \texttt{main}'s bracket, the program is rejected
+due to ignorance of \texttt{ouch}.
+\end{enumerate}
+
+But enough impressionistic handwaving! Let us be a little more systematic.
+
+
+\section{File Structure}
+
+A Frank source file is a series of top-level blocks. Each line whose first character is not whitespace begins a block
+which ends at the start of the next line whose first character is not whitespace. Indentation thus signals the continuation of a block, but is
+otherwise unimportant. Newline-then-space means the same as space.
+Blocks currently come in five varieties:
+\begin{enumerate}
+\item comments, beginning with keyword \texttt{note}
+\item datatype declarations, beginning with keyword \texttt{data}
+\item signature declarations, beginning with keyword \texttt{sig}
+\item function declarations
+\item function definition lines
+\end{enumerate}
+
+The order in which blocks occur in a file only matters if they concern the same entity. Duplicate declarations are not currently flagged as problematic (although this is perhaps an oversight) --- the first wins. You may scatter the lines of a function definition far and wide, spliced with other blocks (although this is perhaps bad practice), but they are prioritized in order of occurrence, following the conventions of pattern matching.
+
+If the Frank interpreter is given a file with a parameterless \texttt{main} function, that function will be executed, performing any \texttt{Console} commands, reporting commands from other signatures, and printing any value ultimately returned. That is, the \texttt{main} function may enable any signature of effects, but the runtime system can only perform \texttt{Console} effects.
+
+
+\section{Types and Signatures}
+
+Frank has mutually defined syntaxes of \emph{value} types $V$, \emph{computation} types $C$, and \emph{signatures}, $\Sigma$.
+\[\begin{array}{rrl@{\qquad}l}
+V & ::= & D\:V^\ast & \mbox{datatypes with parameters} \\
+   & | & \{C\} & \mbox{suspended computations} \\
+   & | & \{\} & \mbox{the empty type} \\
+   & | & ()  & \mbox{the unit type} \\
+   & | & [\Sigma\:?\:\langle[\Sigma']\rangle^?\:V] & \mbox{a request type}\\
+   & | & X & \mbox{value type variable}
+\medskip \\
+C & ::= & \langle[\Sigma]\rangle^?\:V & \mbox{effect and value}\\
+   & | & V \to C & \mbox{function type}
+\medskip \\
+\Sigma & ::= & \sigma^{,\ast} &
+    \mbox{comma-separated signature actions with parameters} \\
+\sigma & ::= & S\:V^\ast & \mbox{a signature extension action with parameters} \\
+         & | & \{\} & \mbox{the purity action}
+\end{array}\]
+\textbf{Grammar grammar.~} I use angle brackets \(\langle\ldots\rangle\) to delimit compound grammatical entities, not as concrete syntax: a superscript \({}^?\) indicates an optional component; \({}^*\) indicates zero or more repetitions, sometimes with a given separator; \({}^+\) indicates one or more, similarly.
+
+Datatype constructors \(D\) and signature constructors \(S\) are Uppercase identifiers, inhabiting separate namespaces. A datatype is a type of values generated by a fixed choice of \emph{value constructors}.
+A signature is collection of \emph{commands} by which a given computation may perform some sort of interaction external to itself.
+A \emph{request} type is a value type which reifies commands, so that we may explain how to respond to them.
+
+The effect signature actions in a computation type explain what the
+computation is allowed to do. For example, \([\texttt{Console}]\:()\)
+is the type of computations which may input and output characters
+before returning the trivial value in the unit type. Frank is a
+call-by-value language, but a value of type \(\{[]\:V\}\) represents
+not a \(V\), but the ability to compute a \(V\) with no external
+interaction. Laziness is thus possible, but explicit and distinct. The
+`purity action' is an artefact of Frank's effect polymorphism, which
+will need careful explanation later.
+
+Commands, constructors and functions are declared by giving \emph{templates}, interspersing \emph{marks} and \emph{places}. A \emph{mark} is a sequence of non-whitespace characters excluding \texttt{()[]\{\},;!} which does not begin in Uppercase or with a single quote, and is not a keyword. A \emph{place} is indicated by a value type, enclosed in parentheses if it is a datatype with at least one parameter.
+A typical template is
+\[
+  \texttt{if Bool then \{[] X\} else \{[] X\}}
+\]
+where \texttt{if}, \texttt{then} and \texttt{else} are the marks, and the
+places are taken by a Boolean value and two suspended computations of some type \texttt{X}. A template may either be a single prefix symbol, followed by any number of places, or a mixfix combination, with no two places consecutive. At present, there is no way to refer to a mixfix template \emph{itself}, without filling its places --- this is clearly an omission.
+
+The keywords are currently as follows:
+\[
+\texttt{note data sig -> ; , = | ! ?}
+\]
+
+
+
+
+\subsection{Datatypes}
+
+A datatype can have zero or more parameters, being value types abstracted by value type variables (also beginning Uppercase).
+\[
+\texttt{data}\:D\:X^\ast\;\texttt{=}\;\mathit{template}^{|\ast}
+\]
+The following datatype is built in
+\[
+\texttt{data Bool  =  tt  |  ff}
+\]
+
+The only type variables permitted in constructor types are those bound in the head of the declaration, so existential types like
+\[
+  \texttt{data MonadExp Y  =  ret Y  |  (MonadExp X) >>= \{X -> MonadExp Y\}}\qquad\hfill (\times)
+\]
+are disallowed. It is, however, permitted (i.e., not excluded) to instantiate datatype parameters in recursive positions, as in nested types.
+\[
+  \texttt{data Tm X = var X | app (Tm X) (Tm X) | lam (Tm (Maybe X))}
+\]
+It is currently permitted to define non-strictly-positive datatypes, such as
+\[
+  \texttt{data Bad = bad \{Bad -> Bad\}}
+\]
+but don't bet on that staying alive!
+
+An important point to which we shall return is that datatypes are at present in no way effect-polymorphic. If one defines binary trees by functional branching,
+thus
+\[
+  \texttt{data Tree X  =  leaf X  |  node {Bool -> Tree X}}
+\]
+then the function \texttt{f} packed in some \texttt{node f} is, you may trust and must ensure, pure (up to considerations of totality). Frank is currently not a total language, but it is well suited to become one:
+effect-tracking is one way to negotiate partiality in a total setting.
+
+
+\subsection{Primitive Value Types}
+
+The unit type \texttt{()} contains one value, also \texttt{()}.
+
+The empty type \texttt{\{\}} has no values, and an `ex falso quodlibet' eliminator, which we shall see later.
+
+The type \texttt{Char} contains character constants, such as \texttt{'h'}, \texttt{'\(\backslash\)n'}.
+
+
+\subsection{Signatures}
+
+A signature is a choice of commands parametrized by some value types,
+declared as follows:
+\[
+  \texttt{sig}\;S\:X^\ast\;\texttt{=}\;\langle\mathit{template} \langle\texttt{[]}\:\langle V\rangle^? \rangle^?\rangle^{|\ast}
+\]
+A command is specified by a template with places for its parameters, followed by an empty bracket \texttt{[]} pronounced `returns', followed by
+a value type, indicating the type of values returned by the command. It is
+permitted to drop the return value type (and even the bracket) if it is the unit type \texttt{()}.
+
+There is currently one built-in signature, declared as if
+\[
+  \texttt{sig Console  =  ouch Char  |  inch [] Char}
+\]
+meaning that \texttt{ouch} has one \texttt{Char} parameter and returns unit, and that \texttt{inch} has no parameters but returns a \texttt{Char}.
+
+As with datatypes, the only type variables permitted in command types are those bound by the signature head. In particular, the following desideratum is currently prohibited:
+\[
+\hspace*{2in}\texttt{sig Abort  =  abort [] X}\hspace*{2in}\hfill (\times)
+\]
+The workaround is to define a command delivering the empty type
+\[
+\texttt{sig Abort  =  aborting [] \{\}}
+\]
+and then to define a polymorphic wrapper
+\begin{verbatim}
+abort [Abort] X
+abort = aborting ! {}
+\end{verbatim}
+which eliminates the empty type to get you out of whatever trouble you find yourself in. An explanation of this mysterious syntax will follow
+presently.
+
+
+
+\subsection{Function Declarations}
+
+A function declaration
+\[
+\mathit{template}\;\langle[\Sigma]\;\langle V\rangle^?\rangle^?
+\]
+equips a template with places showing parameter types with a
+signature of permitted effects and a return type. The return type may be omitted if it is \texttt{()}. Less usefully, the signature and return type may both be omitted if the signature is empty and the return type is \texttt{()}.
+Declared functions are polymorphic in their free value type variables, which may be instantiated with any value type, making use of traditional Milner-style specialisation with unification variables at each point of use. Declared functions are also effect-polymorphic, and specialised in a very particular way at each point of use.
+
+
+\section{Typing Expressions}
+
+Frank is typechecked bidirectionally. The prospect of any sort of complete type inference is not one I have locally considered, although it is conceivable that some sort of Boolean ring-solving might make for a precarious notion of principal type scheme. I am more likely to move in the direction of dependent typing, where you can expect considerable benefit from constraint-solving but will certainly need a `manual override' on occasion.
+
+Typing is relative to
+\begin{enumerate}
+\item a global collection of datatypes
+\item a global collection of polymorphic declared functions
+\item a local set of enabled signatures
+\item a local context of monomorphic values.
+\end{enumerate}
+
+Terms can be divided into `checkable' and `synthesizable' varieties.
+I shall pretend all templates are prefix to simplify the presentation of
+the syntax.
+\[\begin{array}{rrl@{\qquad}l}
+\mathit{check} & ::= & \mathit{synth} & \mbox{if you can synthesize, you can check}\\
+ &|& c\;\mathit{check}^* & \mbox{value constructor} \\
+ &|& \texttt{'}\mathit{char}\texttt{'} & \mbox{character literal} \\
+ &|& \texttt{()} & \mbox{the element of the unit type} \\
+ &|& \{\langle\langle\mathit{pat}^+\;\texttt{->}\;\rangle\:\mathit{check}\rangle^{|+}\} & \mbox{suspended computation} \\
+&|& \mathit{check}\;\texttt{\{\}} & \mbox{ex falso quodlibet} \\
+&|& \mathit{synth}\;\texttt{?}\;\mathit{check}
+  & \mbox{handler installation}
+\medskip \\
+\mathit{synth} & ::= & x & \mbox{local variable} \\
+ &|& f & \mbox{global function} \\
+ &|& o & \mbox{command} \\
+ &|& \mathit{synth}\;\mathit{spine}
+ \medskip \\
+\mathit{spine} & ::= & \texttt{!} & \mbox{empty spine} \\
+&|& \mathit{check}^+ & \mbox{nonempty spine}
+\medskip \\
+\mathit{pat} & ::= & x & \mbox{a pattern variable} \\
+&|& c\;\mathit{pat}^* & \mbox{a constructor pattern} \\
+&|& \texttt{'}\mathit{char}\texttt{'} & \mbox{character literal} \\
+&|& \texttt{()} & \mbox{the element of the unit type} \\
+&|& \texttt{[}\mathit{pat}\texttt{]} & \mbox{return request} \\
+&|& \texttt{[}o\;\mathit{pat}^\ast\;\texttt{?}\;\mathit{pat}\texttt{]}
+ & \mbox{command request with continuation}
+\end{array}\]
+
+Contexts \(\Gamma\) assign value types to variables.
+The judgment forms are as follows:
+\begin{enumerate}
+\item checking that a value type accepts a \(\mathit{check}\) term
+\[
+\Gamma|\Sigma \vdash V \ni \mathit{check}
+\]
+\item synthesizing a value type from a \(\mathit{synth}\) term
+\[
+\Gamma|\Sigma \vdash \mathit{synth} \in V
+\]
+\item feeding a \(\mathit{spine}\) to a computation, yielding a value
+\[
+\Gamma|\Sigma \vdash C \;\mathit{spine}\; V
+\]
+\item checking a suspended computation
+\[
+\Gamma \vdash C \ni \mathit{pat}^\ast \;\texttt{->}\;\mathit{check}
+\]
+\item checking a pattern, extracting a context
+\[
+V\ni\mathit{pat}\dashv \Gamma
+\]
+\item checking that a signature action is enabled
+\[
+\Gamma|\Sigma \vdash \Sigma
+\]
+\end{enumerate}
+
+Some judgments carry an \emph{ambient signature set}, written
+\(\Sigma\), which will always contain finitely many signatures
+\(S\;\vec{V}\) with each \(S\) distinct. We may define the action
+of each \(\sigma\) on such a \(\Sigma\): \(\{\}\cdot\Sigma\)
+yields the empty signature set. \(S\;\vec{V}\cdot\Sigma\)
+extends \(\Sigma\), shadowing any \(S\)-signature that \(\Sigma\)
+previously contained. It is easy to check that signature actions
+form a monoid acting on signature sets.
+
+So, let us have the rules.
+
+\[\begin{array}{c}
+\Rule{\Gamma|\Sigma \vdash s \in V}
+    {\Gamma|\Sigma \vdash V \ni s} \qquad
+\Rule{\Gamma|\Sigma \vdash U_i[\vec{V}/\vec{X}]\ni t_i}
+  {\Gamma|\Sigma \vdash D\:\vec{V} \ni c\;\vec{t}}\; {\texttt{data}\;D\;\vec{X}\;\mbox{has}\; c\;\vec{U}}
+\\
+\Axiom{\Gamma|\Sigma \vdash \texttt{Char} \ni \texttt{'}\mathit{char}\texttt{'} } \qquad
+\Axiom{\Gamma|\Sigma \vdash \texttt{()} \ni \texttt{()}  }\\
+\Rule{\Gamma\vdash C \ni b_i}
+  {\Gamma|\Sigma\vdash\{C\}\ni\{b_1|\ldots|b_n\}}\qquad
+\Rule{\Gamma|\Sigma\vdash\{\} \ni t}
+  {\Gamma|\Sigma\vdash V\ni t\;\{\}} \\
+\Rule{\Gamma|\Sigma\vdash h\in\{[\Sigma_0\;\texttt{?}\;[\Sigma_1]\;U] \;\texttt{->}\; [\Sigma_2]\;V\} \quad
+  \Gamma|\Sigma_0\cdot\Sigma\vdash U\ni e\quad
+  \Gamma|\Sigma_0\cdot\Sigma\vdash \Sigma_0\cdot\Sigma_1\quad
+  \Gamma|\Sigma\vdash\Sigma_2}
+  {\Gamma,\Sigma\vdash V\ni h\;\texttt{?}\;e}
+\end{array}\]
+
+Let's begin with that last rule, as it's the least conventional. It
+explains how to modify the ambient signature set \(\Sigma\) by a given
+extension \(\Sigma_0\), using a handler \(\texttt{h}\) for the extra
+commands in \(\Sigma_0\cdot\Sigma\). The handler is a function from a
+request type for \(\Sigma_0\) requests, each of which consists of a
+\(\Sigma_0\) command and a resumption which might do anything listed
+in \(\Sigma_0\cdot\Sigma_1\). Accordingly, \(\Sigma_0\cdot\Sigma\)
+must enable \(\Sigma_0\cdot\Sigma_1\).  The handler will need to use
+\(\Sigma_2\) effects to give a semantics to the \(\Sigma_0\) effects.
+Accordingly \(\Sigma\) must enable \(\Sigma_2\). We may then allow
+\(\texttt{e}\) to perform \(\Sigma_0\cdot\Sigma\) effects.
+
+
+
+
+\end{document}

@@ -1,0 +1,17 @@
+data Nat = zero | suc Nat
+
+sig Silly = silly Nat [] Nat
+
+sig Abort = abort Nat [] {}
+
+sally Nat [Silly] Nat
+sally n = suc (silly (suc n))
+
+gas Nat [Silly ? Nat] [Abort] Nat
+gas n [x] = x
+gas zero [silly n ? k] = abort n {}
+gas (suc g) [silly n ? k] = gas g ? k (sally n) 
+
+main [Abort] Nat
+main = gas (suc (suc (suc zero))) ? sally zero
+

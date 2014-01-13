@@ -1,0 +1,150 @@
+\documentclass{article}
+\usepackage{palatino}
+\usepackage{a4wide}
+\usepackage{pig}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{stmaryrd}
+\parskip 0.1in
+\parindent 0in
+
+\begin{document}
+\title{Types for Frank}
+\author{Conor McBride}
+\maketitle
+
+\section{Syntax}
+
+
+\newcommand{\gb}[2]{\langle #1 \rangle^{#2}}
+\newcommand{\vin}{\textsc{Vin}}
+\newcommand{\vout}{\textsc{Vout}}
+\newcommand{\cin}{\textsc{Cin}}
+\newcommand{\cout}{\textsc{Cout}}
+\newcommand{\pat}{\textsc{Pat}}
+
+\newcommand{\arr}{\mathbin{\texttt{->}}}
+\newcommand{\bang}{\texttt{!}}
+\newcommand{\sus}[1]{\texttt{\{} #1 \texttt{\}}}
+
+\[\begin{array}{lrl}
+\vin & ::= & \vout \\
+     &   | & \sus{\gb{\cin}{|*}} \\
+     &   | & c\:\gb{\vin}{*}
+\medskip\\
+
+\vout & ::= & \cout \\
+      &   | & x
+\medskip\\
+
+\cin & ::= & \gb{\gb{\pat}{*}\arr}{?}\vin
+\medskip\\
+
+\cout & ::= & \vout \bang \\
+      &   | & f \\
+      &   | & \cout\:\vin
+ \medskip \\
+
+\pat & ::= & x \\
+     &   | & c\:\gb{\pat}{*} \\
+     &   | & \sus{\pat}
+\end{array}\]
+
+\newcommand{\VT}{\mathbb{V}}
+\newcommand{\CT}{\mathbb{C}}
+\newcommand{\IT}{\mathbb{I}}
+\newcommand{\isc}{\!:\!}
+\newcommand{\doesc}{\;}
+
+\[\begin{array}{lrl}
+\VT & ::= & \sus{\CT} \\
+    &   | & D\:\gb{\VT}{*} \\
+    &   | & X
+\medskip\\
+
+\CT & ::= & [\gb{\IT}{*}]\VT \\
+    &   | & \VT \to \CT
+\medskip\\
+
+\IT & ::= & I\:\gb{\VT}{*}
+ \medskip\\
+
+\Gamma & ::= & \\
+       &   | & \Gamma, x \isc V \\
+       &   | & \Gamma, f \doesc C\\
+\end{array}\]
+
+\section{Judgments}
+
+\newcommand{\jfont}{\mathsf}
+\newcommand{\has}{\;\jfont{has}\;}
+\newcommand{\is}{\;\jfont{is}\;}
+\newcommand{\allows}{\;\jfont{allows}\;}
+\newcommand{\does}{\;\jfont{does}\;}
+\newcommand{\fbx}[1]{\framebox{\(#1\)}}
+\newcommand{\tns}[1]{\;[#1]\hspace*{-0.06in}-\;}
+
+\[\begin{array}{ll}
+\fbx{\Gamma \tns{\gb{\IT}{,*}} \VT \has \vin} & \mbox {value type checking}\\
+\fbx{\Gamma \tns{\gb{\IT}{,*}} \vout \is \VT} & \mbox{value type synthesis} \\
+\fbx{\Gamma \vdash \CT \allows \cin} & \mbox{computation type checking}\\
+\fbx{\Gamma \tns{\gb{\IT}{,*}} \cout \does \CT} & \mbox{computation type synthesis}\\
+\fbx{\VT \has \pat \dashv \Gamma} & \mbox{pattern checking}\\
+\end{array}\]
+
+\section{Rules}
+
+\newcommand{\Is}{I\hspace*{-0.03in}I}
+
+\[\begin{array}{c}
+\fbx{\Gamma \tns{\gb{\IT}{,*}} \VT \has \vin}
+\medskip\\
+\Rule{\Gamma \tns{\Is} u \is U \quad U \equiv V}
+     {\Gamma \tns{\Is} V \has u}
+\\
+\Rule{\Gamma \vdash C \allows b_i}
+     {\Gamma \tns{\Is} \sus{C} \has \sus{\vec{b}|}}
+\\
+\RuleSide
+  {\Gamma \tns{\Is} \bigwedge_i V_i[\vec{U}/\vec{X}] \has v_i}
+  {D\:\vec{X} \ni c\:\vec{V}}
+  {\Gamma \tns{\Is} D\:\vec{U} \has c\:\vec{v}}
+\end{array}\]
+
+\[\begin{array}{c}
+\fbx{\Gamma \tns{\gb{\IT}{,*}} \vout \is \VT}
+\medskip\\
+\Rule{\Gamma \tns{\Is} e \does [\Is']V\quad \Is'\subseteq \Is }
+     {\Gamma \tns{\Is} e \is V}
+\\
+\Axiom{\Gamma,x\isc V,\Gamma' \tns{\Is} x \is V}
+\end{array}\]
+
+\[\begin{array}{c}
+\fbx{\Gamma \tns{\gb{\IT}{,*}} \cout \does \CT}
+\medskip\\
+\Rule{\Gamma \tns{\Is} u \is \sus{C}}
+     {\Gamma \tns{\Is} u! \does C}
+\\
+\Axiom{\Gamma,f\doesc C,\Gamma' \tns{\Is} f \does C}
+\\
+\Rule{\Gamma \tns{\Is} e\does V\to V\quad \Gamma \tns{\Is} V \has v}
+     {\Gamma \tns{\Is} e\:v \does C}
+\end{array}\]
+
+\[\begin{array}{c}
+\fbx{\VT \has \pat \dashv \Gamma}
+\medskip\\
+\Axiom{V \has x \dashv x\isc C}
+\\
+\Axiom{\sus{C} \has \sus{f} \dashv f\doesc C}
+\\
+\RuleSide{\bigwedge_i V_i[\vec{U}/\vec{X}] \has p_i \dashv \Gamma_i}
+         {D\:\vec{X} \ni c\:\vec{V}}
+         {D\:\vec{U}\has c\:\vec{p} \dashv \biguplus_i\Gamma_i}
+\end{array}\]
+
+
+
+
+\end{document}

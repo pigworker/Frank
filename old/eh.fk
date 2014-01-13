@@ -1,0 +1,39 @@
+() >> Y [] Y
+_ >> y = y
+
+sig Throws E
+     = throwing E [] {}
+
+throw E [Throws E] X
+throw e = throwing e {}
+
+try {[Throws E] X} catch {E -> X} [] X
+try x catch handle = catch handle ? x!
+
+catch {E -> X} [Throws E ? X] [] X
+catch _ [x] = x
+catch handle [throwing e ? _] = handle e
+
+note I can use both of these inside a [Throws E] computation:
+
+consider Char [Throws Char] Char
+consider '!' = '?'
+consider c = throw c
+
+test1 Char [Throws Char] Char
+test1 c = try {throw c} catch consider
+
+test2 Char [Throws Char] Char
+test2 c = catch consider ? throw c
+
+note ...and I can use both of these to run, and hence escape, a
+  [Throws E] computation:
+
+main1 [Console] Char
+main1 = try {ouch (test1 'z') >> '.'} catch {c -> c}
+
+main2 [Console] Char
+main2 = catch {c -> c} ? ouch (test2 '!') >> '.'
+
+main [Console] Char
+main = main1!

@@ -1,0 +1,490 @@
+note (0) titles
+
+
+
+
+
+
+			      F R A N K
+
+			    a direct style
+		     of programming with effects
+
+			    Conor McBride
+
+		Mathematically Structured Programming
+		      University of Strathclyde
+
+
+
+  
+
+
+note (0.5) credits
+
+  Inspiration
+
+    CBPV by PB Levy
+    an old joke
+
+  Thanks (also between the T and the s)
+
+    Tarmo Uustalu (for organising EffTT in 2007)
+    Hugo Herbelin (for helping me hide in Paris in 2012)
+    Gordon Plotkin and John Power
+      (for their work on algebraic effects)
+    Thorsten Altenkirch and Wouter Swierstra
+      (for "Beauty in the Beast")
+    Ohad Kammar, Sam Lindley and Nicolas Oury
+      (for being into this sort of thing)
+    Stevan Andjelkovic (for continuing developments)
+    James McKinna (for reminding me that initiality gives a
+      concrete form of abstraction)
+
+
+note (1) motivation -- roll this slowly
+
+  Motivation:
+
+    I'm unhappy
+
+      with Haskell programs like
+
+        mapMaybe :: (a -> Maybe b) -> [a] -> Maybe [b]
+        mapMaybe f []        = pure []
+        mapMaybe f (a : as)  = pure (:) <*> f a <*> mapMaybe f as
+
+      and all that fluff 'cos f does stuff
+      that somehow isn't pure enough.
+
+    I remember
+
+      programming in ML
+
+      where types will mind your values well
+      but side-effects go straight to Hell.
+
+note (2) wishful thinking
+
+  I'd be happier if
+
+    types made a clearer separation of values and effects
+
+      Maybe Integer
+
+        is sometimes the type of abortable Integer computations
+
+          e.g. do i <- readMaybe myString ; return (i + 5)
+
+        and sometimes a type of pure values, Just Int or Nothing
+
+          e.g. max Nothing        mj = mj
+               max mi        Nothing = mi
+               max (Just i) (Just j) = Just (max i j)
+
+          treating Nothing as "-infinity"
+
+
+
+note (3) more wishful thinking
+
+  I'd be happier if
+
+    the *interface* for a mode of effectful computation were
+      more clearly separated from its implementation
+
+  E.g., if you give me some monad M allowing "teletype" operations
+
+      inch :: M Char
+      ouch :: Char -> M ()
+
+    then I can write interactive programs...
+
+    ...even if I don't know how to run them.
+
+
+
+    There might be more than one way to run such a program.
+
+  Enough waffle. Let's hack.
+
+note (4) yer basic rock'n'roll
+
+  This is a comment, but the next thing isn't.
+
+data List X
+  = nil
+  | X :: (List X)
+
+(List X) ++ (List X) [] List X
+nil       ++ ys = ys
+(x :: xs) ++ ys = x :: (xs ++ ys)
+
+note  ** example
+
+  main [] List Char
+  main = ('h' :: ('e' :: nil)) ++ (('l' :: nil) ++ ('l' :: ('o' :: nil)))
+
+note Syntax (may necessitate an apology...Wadler's Law)
+
+  [] is the copula (and you might guess it won't stay empty)
+  Types look Capital, so the structure of templates is clear
+
+note (5) an effect signature
+
+  So far, plus ca change. But now, an effect *signature*.
+
+sig State S
+  = get [] S
+  | put S [] ()
+
+data Nat = zero | suc Nat
+
+X <* Y [] X
+x <* y = x
+
+next [State Nat] Nat
+next = get! <* put (suc (get!))
+
+note Try with [] instead; talk about the !
+
+note I haven't said how to *run* a State Nat computation.
+
+note the dog not barking
+
+note (6) types for Frank
+
+  Theory break!
+
+  Frank separates value types from computation types, like CBPV.
+
+  Here's the type system for *monomorphic* Frank.
+
+    V  ::= {C}         suspended computation
+         | D V*        datatype
+         | ...         (more later)
+
+    C  ::= [Ss]V       do stuff in Ss to get a value in V
+         | V -> C      choose a C to do, given a V
+
+    Ss ::= (S V*)*     a bunch of effect signatures, where each
+                         S is distinct
+
+  In Haskell terms, the [Ss] bit is the monad. We're always in a
+  (free) monad. Sometimes it's the identity monad.
+  Values types must fit as usual. Sigs are checked for inclusion.
+
+note (7) syntax
+
+    term  ::= con term*         data constructor application
+            | {comp}            suspended computation
+            | usage             variables, applications etc
+            | ...               (more later)
+
+    usage ::= x                 variable
+            | op                operation from a signature
+            | usage spine       application to a spine of arguments
+
+    spine ::= !                 empty spine
+            | term+             nonempty spine
+
+    comp  ::= pat* -> term      n-ary lambda, with matching
+            | comp|comp         prioritised alternatives
+            | term              {-> t} abbreviated by {t}
+
+    pat   ::= x                 variable
+            | con pat*          constructor pattern
+            | ...               (more later)
+
+note (8) judgment forms
+
+  Typing judgments
+
+      a context G contains lots of x : V assignments
+      an ability Ss contains signatures containing operations
+
+    G [Ss]- V :> term      check type for canonical term
+
+    G [Ss]- usage <: V     infer type for noncanonical term
+
+    G [Ss]- C spine V      select a C computation to deliver a V
+
+    G |- C :> comp         check a C computation
+
+    V :> p -| G            check a pattern, delivering a context
+
+
+
+
+
+
+note (9) edited highlights of the rules
+
+    G [Ss]- u <: U    U=V  
+  -------------------------                    (Vs must coincide)
+    G [Ss]- V :> u       
+  
+    op Us [] V in S                   
+  ------------------------------            (S not related to Ss)
+    G [Ss]- op <: {Us -> [S]V}
+
+    G [Ss]- u <: {C}    G [Ss]- C ts V
+  --------------------------------------      (forcing the thunk)
+    G [Ss]- u ts <: V                  
+
+    G [Ss]- U :> t    G [Ss]- C ts V
+  ------------------------------------   (choosing a computation)
+    G [Ss]- (U -> C) t ts V
+
+    Ss' <= Ss
+  ----------------------               (Ss checked for inclusion)
+    G [Ss]- [Ss']V ! V
+
+note (10) lazy versus eager, if versus iffy
+
+  Frank is call-by-value, except...
+
+  ... {[]V} is the type of suspended computations delivering a V
+  and that's not the same as V.
+
+  Compare this...
+
+if Bool then {[]X} else {[]X} [] X
+if tt then t else e = t!
+if ff then t else e = e!
+
+note   ... with this
+
+iffy Bool then X else X [] X
+iffy tt then t else e = t
+iffy ff then t else e = e
+
+note  Spot the difference? Which might you use to decide whether
+      to "launch the missiles"?
+
+note (11) polymorphism
+
+  Did you spot the effect polymorphism on the last slide?
+  What about the effect polymorphism in this?
+
+map {S -> []T} (List S) [] List T
+map f nil       = nil
+map f (x :: xs) = f x :: map f xs
+
+note
+
+  A top-level declaration has a *type scheme*, not just a *type*.
+
+  As for Milner, type variables stand for any old V-type, and get
+    instantiated at usage sites by unification. (Note that by
+    forbidding the abstraction of C-types, I avoid the issue of
+    inferring signatures from inclusion constraints.)
+
+  But also, an [Ss] box in a type scheme represents not an
+    ability, but an ability *action*. At usage sites, we apply
+    each such action to the ambient ability to get a monotype.
+
+note (12) handling effects by processing command-response trees
+
+state S [State S ? X] [] X
+state _ [x]          = x
+state s [get   ? k]  = state s ? k s
+state _ [put s ? k]  = state s ? k ()
+
+note  The monotype [Ss' ? [Ss"]V] is the type of
+      Ss' requests from a computation doing Ss" to get a V
+
+    V :> p -| G
+  ------------------------------
+    [Ss' ? [Ss"]V] :> [p] -| G
+
+    op U1..Un [] U' in S in Ss'
+    Ui :> pi -| Gi    {U' -> [Ss"]V} :> p' -| G'
+  -----------------------------------------------------
+    [Ss' ? [Ss"]V] :> [op p1..pn ? p'] -| G1+..+Gn+G'
+
+  The "continuation" will also need to be handled somehow!
+  Polytype [Ss' ? V] for ambient Ss gives [Ss'.{} ? [Ss'.Ss]V]
+
+note (13) the ? construct handles effects
+
+    G [Ss]- h <: {[Ss' ? [Ss"]U] -> [Ss]V}
+    G [Ss"]- U :> t
+    Ss' <= Ss" <= Ss'+Ss
+  ------------------------------------------
+    G [Ss]- V :> h ? t
+
+  That's to say, you can locally enable some new effects by
+  explaining how to handle them.
+  Handlers stack up. When an op is invoked, working outward,
+  each handler either  handles that op
+                   or  wraps the continuation
+
+  Or if you like, you can see each handler as transforming
+  a command-response tree just by replacing the nodes for the
+  commands it handles and copying the rest.
+
+note ** example
+  main [] List Nat
+  main = state zero ? map {_ -> next!} (() :: (() :: (() :: nil)))
+
+note (14) a spot of coroutining
+
+sig Send X
+  = send X [] ()
+
+sig Receive X
+  = receive [] X
+
+sig Abort
+  = abort [] {}
+
+note    The abort command returns an element of the
+        empty type, {}.
+
+receiveFrom {[Send X, Abort]()} [Receive X ? [Abort] Y] [Abort] Y
+receiveFrom s [y]            = y
+receiveFrom s [receive ? r]  = sendTo r ? s!
+
+sendTo {X -> [Receive X, Abort] Y} [Send X ? [Abort] ()] [Abort] Y
+sendTo r [()]          = abort! {}
+sendTo r [send x ? k]  = receiveFrom {k ()} ? r x
+
+note (15) some coroutines
+  Let me cook up some more standard equipment.
+
+X *> Y [] Y
+x *> y = y
+
+case X of {X -> [] Y} [] Y
+case x of f = f x
+
+note Here's a sender (send everything!).
+
+sends (List X) [Send X] ()
+sends xs = map send xs *> ()
+
+note Here's a list receiver which keeps receiving until nil.
+
+catter [Receive (List X)] List X
+catter = case receive! of
+  { nil  -> nil
+  | xs   -> xs ++ catter!
+  }
+
+note (16) so let's do it
+
+hello [] List Char
+hello = 'h' :: ('e' :: ('l' :: ('l' :: ('o' :: nil))))
+
+space [] List Char
+space = ' ' :: nil
+
+world [] List Char
+world = 'w' :: ('o' :: ('r' :: ('l' :: ('d' :: nil))))
+
+sender [Send (List Char)] ()
+sender =
+  sends (hello! :: (space! :: (world! :: (nil :: nil))))
+
+note ** example
+  main [Abort, Console] ()
+  main = map ouch (receiveFrom sender ? catter!) *> ()
+
+
+
+
+note (17) a larger example
+
+sig ReadLine
+  = peek [] Char
+  | nom
+
+data SExp
+  = atom (List Char)
+  | SExp & SExp
+
+sexp [ReadLine, Abort] SExp
+sexp = case peek! of
+  { ' '  -> nom! *> sexp!
+  | '\n' -> nom! *> sexp!
+  | '.'  -> abort! {}
+  | ')'  -> abort! {}
+  | '('  -> nom! *> open!
+  | _    -> atom (name!)
+  }
+
+open [ReadLine, Abort] SExp
+open = case peek! of
+  { ' '  -> nom! *> open!
+  | '\n' -> nom! *> open!
+  | '.'  -> abort! {}
+  | ')'  -> nom! *> atom nil
+  | _    -> sexp! & cdr!
+  }
+
+cdr [ReadLine, Abort] SExp
+cdr = case peek! of
+  { ' '  -> nom! *> cdr!
+  | '\n' -> nom! *> cdr!
+  | '.'  -> nom! *> (sexp! <* close!)
+  | _    -> open!
+  }
+
+close [ReadLine, Abort] ()
+close = case peek! of
+  { ' '  -> nom! *> close!
+  | '\n' -> nom! *> close!
+  | ')'  -> nom!
+  | _    -> abort! {}
+  }
+
+name [ReadLine, Abort] List Char
+name = case peek! of
+  { c -> if elem c (punc!)
+          then {nil}
+          else {nom! *> (c :: name!)}
+  }
+
+punc [] List Char
+punc = '\n' :: (' ' :: ('(' :: (')' :: ('.' :: nil))))
+
+elem Char (List Char) [] Bool
+elem c nil = ff
+elem c (c' :: cs) = if (c =Char= c') then {tt} else {elem c cs}
+
+data Maybe X = no | yes X
+
+noBS (Maybe Char) [ReadLine ? X] [Console] X
+noBS _       [x]        = x
+noBS no      [peek ? k] = case inch! of {c -> noBS (yes c) ? k c}
+noBS (yes c) [peek ? k] = noBS (yes c) ? k c
+noBS _       [nom ? k]  = noBS no ? k ()
+
+
+
+data Stk X
+  = (Stk X) -peek {Char -> [ReadLine, Abort] X}
+  | (Stk X) -nom
+  | root {[ReadLine, Abort] X}
+
+withBS (Stk X) (Maybe Char) [ReadLine, Abort, {} ? X] [Console] X
+withBS stk _       [x]          = x
+withBS stk no      [peek ? k]   = case inch! of
+  { '\b' -> pop stk
+  | c -> withBS (stk -peek k) (yes c) ? k c
+  }
+withBS stk (yes c) [peek ? k]   = withBS stk (yes c) ? k c
+withBS stk (yes c) [nom ? k]
+    = ouch c *> withBS (stk -nom) no ? k ()
+withBS stk _       [abort ? l]  = pop stk
+
+pop (Stk X) [Console] X
+pop (stk -peek k) = withBS stk no ? k (peek!)
+pop (stk -nom) = ouch '\b' *> (ouch ' ' *> (ouch '\b' *> pop stk))
+pop (root r) = withBS (root r) no ? r!
+
+note ** the main deal
+main [Console] SExp
+main = withBS (root {sexp!}) no ? sexp!
+

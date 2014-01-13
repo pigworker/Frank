@@ -1,0 +1,205 @@
+note    Frank: an experimental new typed language for
+        higher-order programming with effects
+
+        Conor McBride
+        Mathematically Structured Programming Group
+        University of Strathclyde
+
+note    This talk proposal for HOPE 2012 is a Frank
+        source file. I propose a 30 minute talk/demo
+        about Frank, its type system, and the modes
+        of programming it supports.
+
+note    To get hold of the Frank implementation, see
+
+  http://personal.cis.strath.ac.uk/conor.mcbride/pub/Frank
+
+        and once you've installed Frank, you can run
+        this file by renaming it hope.fk, then invoking
+
+        frank hope
+
+note    Frank is a functional programming language
+        with effects and handlers in the style of Eff
+        controlled by a type system inspired by Levy's
+        call-by-push-value. I designed Frank in
+        December 2007 and gave a talk about it at a
+        workshop in Tallinn, but I only got around to
+        implementing it in May 2012.
+
+        Doing and Being are clearly separated, and
+        managed by distinguished notions of computation
+        and value types.
+
+note    Concrete values live in inductive datatypes.
+
+data List X
+   = nil
+   | X :: (List X)
+
+note    We can write perfectly ordinary functional
+        programs, with (compulsory) type signatures.
+        A type signature starts with a template for
+        an application. The square brackets are
+        pronounced "returns". Sometimes, effect
+        permissions are listed inside the brackets.
+
+(List X) ++ (List X) [] List X
+nil       ++ ys = ys
+(x :: xs) ++ ys = x :: (xs ++ ys)
+
+note    Higher-order functions are passed suspended
+        computations. Braces are "suspenders".
+
+map {S -> T} (List S) [] List T
+map f nil       = nil
+map f (s :: ss) = f s :: map f ss
+
+note    A value type is a datatype or a suspended
+        computation type (or something else, later).
+
+        V ::= D V* | {C}
+
+        A computation type is a function type or
+        an effect-annotated value type...
+
+        C ::= V -> C | [S*] V
+
+        ...where an empty bracket can be dropped.
+
+        Effects are organised by signatures, which
+        describe a choice of commands. Here are some
+        simple signatures.
+
+sig Send X
+  = send X [] ()
+
+sig Receive X
+  = receive [] X
+
+sig Abort
+  = abort [] {}
+
+note    The abort command returns an element of the
+        empty type, {}.
+
+note    Frank is a call-by-value language, but it
+        naturally distinguishes {[]X}, the type of
+        suspended pure computations which deliver an
+        X, from X itself. We can thus define a kind of
+        "semicolon" just as the function which ignores
+        its first argument.
+
+X >> Y [] Y
+x >> y = y
+
+note    Frank has extremely simple effect polymorphism,
+        enough to allow higher-order functions to pass
+        effect permissions to their parameters. The
+        following uses map to send a list of things,
+        one at a time.
+
+sends (List X) [Send X] ()
+sends xs = map send xs >> ()
+
+note    The following does not typecheck, because the
+        Send effect is not permitted.
+
+  bad (List X) [] ()
+  bad xs = map send xs >> ()
+
+note    Writing control operators is not too tricky.
+
+let X in {X -> [] Y} [] Y
+let x in f = f x
+
+note    Here's a process which receives and
+        concatenates lists until one is empty.
+
+        "receive!" is a list delivered by receiving;
+        "receive" is the command which receives
+
+catter [Receive (List X)] List X
+catter = let receive! in
+           { nil  -> nil
+           | xs   -> xs ++ catter!
+           }
+
+note    Effects are handled by functions which take
+        values in *request* types.
+
+           [Receive X ? [Abort] Y]
+
+        is the type of Receive-requests from processes
+        which may also Abort and ultimately return a Y.
+        Such a request may indeed be [y], a return value,
+        or it may be [receive ? r], a request to receive,
+        accompanied by a resumption r, to be invoked with
+        the value received.
+
+        The construct
+
+           handler ? process
+
+        uses the handler to satisfy the requests which
+        arise from the commands of the process.
+
+note    Here are two handlers which make coroutines of
+        a sender and a receiver. The Receive handler
+        takes a suspended sender, and vice versa. The
+        process aborts if the receiver is hungry but
+        the sender has nothing more to send.
+
+receiveFrom {[Send X, Abort]()}
+  [Receive X ? [Abort] Y] [Abort] Y
+receiveFrom s [y] = y
+receiveFrom s [receive ? r] = sendTo r ? s!
+
+sendTo {X -> [Receive X, Abort] Y}
+  [Send X ? [Abort] ()] [Abort] Y
+sendTo r [()] = abort! {}
+sendTo r [send x ? k] = receiveFrom {k ()} ? r x
+
+note    Here are some things to send.
+
+hello [] List Char
+hello = 'h' :: ('e' :: ('l' :: ('l' :: ('o' :: nil))))
+
+space [] List Char
+space = ' ' :: nil
+
+world [] List Char
+world = 'w' :: ('o' :: ('r' :: ('l' :: ('d' :: nil))))
+
+note    Here is a process which sends them.
+
+sender [Send (List Char)] ()
+sender =
+  sends (hello! :: (space! :: (world! :: (nil :: nil))))
+
+note    Here is the main function, which delivers
+        the output of the coroutines to the console.
+
+main [Abort, Console] List ()
+main = map ouch (receiveFrom sender ? catter!)
+
+note    The type system does two separate things
+          * it ensures that value types coincide
+          * it ensures that effects required are
+              included in effects enabled
+
+note    The semantics is based on free monads for the
+        functors induced by sets of signatures.
+
+note    The implementation (in Haskell, but written
+        in the Frank style) is cps-transformed, to
+        avoid expensive left-nesting of substitutions.
+
+note    The fun of Frank is that one can say what it is
+        to *be* a process without saying what it is to
+        *do* it. Doing and being separately negotiable,
+        and readily interleaved in different ways. Or
+        as Frank Sinatra put it,
+
+        do be do be do
+
