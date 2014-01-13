@@ -41,6 +41,7 @@
 
 > data PAT
 >   = PV String
+>   | PU
 >   | PC Template [PAT]      -- void pattern is |PC [] []|
 >   | PL Char                -- char literal
 >   | PR PAT
@@ -67,6 +68,7 @@
 >   CL    :: Char                    -> TM {CHK}
 >   CN    :: Template -> [TM {CHK}]  -> TM {CHK}
 >   LAM   :: [([PAT], TM {CHK})]     -> TM {CHK}
+>   LET   :: TM {SYN} -> PAT -> TM {d} -> TM {d}
 
 > data HD  = VA Int
 >          | FN Template  -- cache the def like a Birdman?
@@ -135,6 +137,11 @@
 >           checkR u e
 >         (|(E (HAN h e))|)
 >       _ -> moanE $ BadHandlerType z
+>   RLet sr pr tr -> do
+>     (st, sv) <- synR sr
+>     (g, p) <- patCh sv pr
+>     tt <- cxLocal g $ checkR v tr
+>     (|(LET st p tt)|)
 >   r        -> synR r >>= want v
 
 > synR :: Raw -> ElabM (TM {SYN}, VT)
@@ -158,7 +165,13 @@
 >         checkR u e
 >       (|(HAN h e, w)|)
 >     _ -> moanE $ BadHandlerType v
+> synR (RLet sr pr tr) = do
+>     (st, sv) <- synR sr
+>     (g, p) <- patCh sv pr
+>     (tt, w) <- cxLocal g $ synR tr
+>     (|(LET st p tt, w)|)
 > synR RBang = moanE $ Cockup "! in synR"
+> -- synR s = moanE $ Cockup (show s ++ " falls off synR")
 
 > ttrCh :: VT -> (TTree Raw) -> ElabM (TM {CHK})
 > -- ttrCh v t | trace ("ttrCh " ++ show (v, t)) $ False = undefined
@@ -329,6 +342,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 > patCh :: VT -> Pat -> ElabM (Bwd Entry, PAT)
+> patCh _            (PN "_")    = return (B0, PU)
 > patCh v            (PN x)      = do
 >   info <- getInfoE
 >   if elem [Mark x] (ttTemplates (templateT info))

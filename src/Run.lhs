@@ -67,6 +67,11 @@
 > eval fs g (CN c es) = (|(VC c) (traverse (eval fs g) es)|)
 > eval fs g (CL c) = (|(VL c)|)
 > eval fs g (LAM pes) = (|(VU (lambda fs g pes))|)
+> eval fs g (LET s p t) = do
+>   v <- eval fs g s
+>   case match p v g of
+>     Just g' -> eval fs g' t
+>     Nothing -> error "LET pattern match failure"
 
 > apply :: VAL -> [VAL] -> Free Frank VAL
 > apply (VU f) vs = f vs
@@ -90,6 +95,7 @@
 > matches (p : ps) (v : vs)  = match p v >=> matches ps vs
 
 > match :: PAT -> VAL -> Env -> Maybe Env
+> match PU           _                     = (|Just id|)
 > match (PV _)       v                     = (|Just (v :)|)
 > match (PC c ps)    (VC d vs) | c == d    = matches ps vs
 > match (PL c)       (VL d) | c == d       = (|Just id|)

@@ -77,6 +77,7 @@
 >   | RBang
 >   | RTh [([Pat],Raw)]
 >   | RQ Raw Raw
+>   | RLet Raw Pat Raw
 >   deriving Show
 
 > data Pat
@@ -192,9 +193,18 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 > bigRaw :: Pa Tok Raw
-> bigRaw = (| RQ medRaw (-is "?"-) bigRaw
->           | id medRaw
->           |)
+> bigRaw = bigRawL >>= bigRawR
+
+> bigRawL :: Pa Tok Raw
+> bigRawL = (| RQ medRaw (-is "?"-) bigRaw
+>            | id medRaw
+>            |)
+
+> bigRawR :: Raw -> Pa Tok Raw
+> bigRawR s = (| RLet ~s
+>                (| id (-is "->"-) patP | (PN "_") |) (-is ";"-) bigRaw
+>              | s
+>              |)
 
 > medRaw :: Pa Tok Raw
 > medRaw = (| RA (|weeRaw : some weeRaw|)

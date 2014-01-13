@@ -14,11 +14,8 @@ sig State S
 
 data Nat = zero | suc Nat
 
-X << Y [] X
-x << y = x
-
 next [State Nat] Nat
-next = get << put (suc get)
+next = get -> n; put (suc n); n
 
 state S [State S ? X] [] X
 state _ [x] = x
@@ -45,5 +42,6 @@ fnom [fread ? k] = case inch of
   |  _ -> abort
   }
 
-main [Console] Nat
-main = default zero ? fnom ? fread
+main [] List Nat
+main = state zero ? map {_ -> next} (() :> (() :> (() :> nil)))
+
