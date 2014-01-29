@@ -29,6 +29,7 @@
 >   | DEFN Int Type
 >   | NOUN LName Type
 >   | MARK
+>   | VERB LName (Int, Int) [(Intf, Type)] (Intf, Type)
 >   deriving Show
 
 > instance TyDeclCx CxE Int Int where
@@ -117,13 +118,18 @@
 >   xs <- unifs xn
 >   halfZipWith (vin stuf) (map (>>= ((us ++ xs) !!)) ss) vs
 >   equal (D d us) t
-> vin stuf (is :-> (oi, t)) (VF bs) = () <$ traverse body bs where
+> vin stuf (is :-> (oi, t)) (VT bs) = () <$ traverse body bs where
 >   body (rs, v) = mark $ do
 >     halfZipWith (\ (i, t) r -> withIntf i $ req stuf oi t r) is rs
 >     withIntf oi $ vin stuf t v
 > vin stuf t (VO v) = do
 >   s <- vout stuf v
 >   equal s t
+> vin stuf t (VL o p v) = do
+>   s <- vout stuf o
+>   mark $ do
+>     pat stuf s p
+>     vin stuf t v
 > vin _ _ _ = empty
 
 > noun :: LName -> Type -> CHECK ()
@@ -172,8 +178,22 @@
 >   halfZipWith (vin stuf) (map sbst ss) vs
 >   return (sbst t)
 > vout stuf (VA v vs) = do
->   is :-> (oi, ot) <- vout stuf v
+>   (is, (oi, ot)) <- vhead stuf v
 >   intfOK oi
 >   halfZipWith (\ (ii, t) v -> withIntf ii $ vin stuf t v) is vs
 >   return ot
 
+> vhead :: Globs -> VHead -> CHECK ([(Intf, Type)], (Intf, Type))
+> vhead stuf (VF o) = do
+>   is :-> o <- vout stuf o
+>   return (is, o)
+> vhead stuf (VP p) = do
+>   ((m, n), is, o) <- cxFind $ \ g -> case g of
+>     VERB q n is o | p == q -> Just (n, is, o)
+>     _ -> Nothing
+>   (_, sg, _) <- get
+>   ts <- unifs n
+>   let tsb (Skol j) | j >= m = I (ts !! (j - m))
+>       tsb x = I (X x)
+>       sbst = unI . substSgTy tsb (I . const sg)
+>   return (map sbst is, sbst o)
