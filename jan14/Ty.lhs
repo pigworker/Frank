@@ -1,5 +1,5 @@
 > {-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies,
->     FlexibleInstances #-}
+>     FlexibleInstances, FlexibleContexts, PatternGuards #-}
 
 > module Ty where
 
@@ -14,7 +14,7 @@
 
 > import Gubbins
 
-> type UName = String -- initial uppercase
+> newtype UName = UName String deriving (Show, Eq) -- initial uppercase
 
 > data Ty e x
 >   = X x
@@ -78,28 +78,31 @@
 
 > data TyV x u = Skol x | Unif u deriving (Show, Eq, Ord)
 
-> rigidTy :: (Eq x, Eq u) => Ty () (TyV x u) -> Ty () (TyV x u) ->
->            Maybe [(u, Ty () (TyV x u))]
-> rigidTy (X x) (X y) | x == y = pure []
-> rigidTy (X (Unif u)) t = pure [(u, t)]
-> rigidTy t (X (Unif u)) = pure [(u, t)]
-> rigidTy (D d as) (D e bs) | d == e = concat <$> halfZipWith rigidTy as bs
-> rigidTy (is :-> o) (js :-> p) =
->   concat <$> halfZipWith rigidSgTy (o : is) (p : js)
-> rigidTy _ _ = empty
+> class Rigid t c where
+>   rigid :: t -> t -> Maybe [c]
 
-> rigidSgTy  :: (Eq x, Eq u) => SgTy () (TyV x u) -> SgTy () (TyV x u) ->
->            Maybe [(u, Ty () (TyV x u))]
-> rigidSgTy (s, t) (r, u) = (++) <$> rigidSg s r <*> rigidTy t u
+> instance Rigid UName c where
+>   rigid x y = if x == y then Just [] else Nothing
 
-> rigidSg  ::  (Eq x, Eq u) => Sg (TyV x u) () -> Sg (TyV x u) () ->
->              Maybe [(u, Ty () (TyV x u))]
-> rigidSg (E _) (E _) = pure []
-> rigidSg Pure Pure = pure []
-> rigidSg ((sn, as) :+ sg) sg' = do
->   (bs, sg'') <- findSg sn sg'
->   (++) <$> rigidSg sg sg'' <*> (concat <$> halfZipWith rigidTy as bs)
-> rigidSg _ _ = empty
+> instance (Rigid s c, Rigid t c) => Rigid (s, t) c where
+>   rigid (s, t) (s', t') = (++) <$> rigid s s' <*> rigid t t'
+
+> instance Rigid t c => Rigid [t] c where
+>   rigid ts us = concat <$> halfZipWith rigid ts us
+
+> instance (Eq x, Eq u) => Rigid (Ty () (TyV x u)) (u, Ty () (TyV x u)) where
+>   rigid (X x)         (X y)         | x == y = pure []
+>   rigid (X (Unif u))  t             = pure [(u, t)]
+>   rigid t             (X (Unif u))  = pure [(u, t)]
+>   rigid (D d as)      (D e bs)      = rigid (d, as) (e, bs)
+>   rigid (is :-> o)    (js :-> p)    = rigid (is, o) (js, p)
+>   rigid _             _             = empty
+
+> instance (Eq x, Eq u) => Rigid (Sg (TyV x u) ()) (u, Ty () (TyV x u)) where
+>   rigid (E _)             (E _)  = pure []
+>   rigid Pure              Pure   = pure []
+>   rigid ((sn, as) :+ sg)  sg'    = rigid (as, sg) =<< findSg sn sg'
+>   rigid _                 _      = empty
 
 > findSg :: UName -> Sg x e -> Maybe ([Ty e x], Sg x e)
 > findSg sn ((sm, ts) :+ sg)
@@ -136,17 +139,25 @@
 >     (_, Just (v, ms)) | u == v   -> case (member (Unif v) vs, ms) of
 >       (True, _)          -> Nothing
 >       (False, Nothing)   -> Just (gz <>< gs :< defnUnif u t)
->       (False, Just s)    -> (:< g) <$> unifyTy gz s t
+>       (False, Just s)    -> (:< g) <$> unify gz s t
 >     (_, Just (v, mt)) | member (Unif v) vs ->
 >       go gz (g :> gs) (deps mt `mappend` vs)
 >     _ -> (:< g) <$> go gz gs vs
 
-> unifyTy ::  TyDeclCx g x u => 
->             Bwd g -> Ty () (TyV x u) -> Ty () (TyV x u) -> Maybe (Bwd g)
-> unifyTy gz s t = do
->   cs <- rigidTy s t
+> unify ::  (TyDeclCx g x u, Rigid p (u, Ty () (TyV x u))) => 
+>           Bwd g -> p -> p -> Maybe (Bwd g)
+> unify gz s t = do
+>   cs <- rigid s t
 >   execStateT (traverse solve cs) gz
 
+> subSg :: TyDeclCx g x u =>
+>          Bwd g -> Sg (TyV x u) () -> Sg (TyV x u) () -> Maybe (Bwd g)
+> subSg gz Pure   _ = Just gz
+> subSg gz (E ()) (E ()) = Just gz
+> subSg gz (E ()) (_ :+ sg) = subSg gz (E ()) sg
+> subSg gz ((sn, as) :+ sg) sg' | Just (bs, sg'') <- findSg sn sg' = do
+>   gz <- subSg gz sg sg''
+>   unify gz as bs
 
 > data TestCx
 >   = SKOL String
