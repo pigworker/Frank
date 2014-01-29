@@ -14,7 +14,8 @@
 
 > import Gubbins
 
-> newtype UName = UName String deriving (Show, Eq) -- initial uppercase
+> newtype UName = UName String deriving (Eq, Ord) -- initial uppercase
+> instance Show UName where show (UName x) = x
 
 > data Ty e x
 >   = X x
@@ -159,6 +160,7 @@
 >   gz <- subSg gz sg sg''
 >   unify gz as bs
 
+> {-
 > data TestCx
 >   = SKOL String
 >   | UNIF String
@@ -172,4 +174,4 @@
 >   declUnif (DEFN u t) = Just (u, Just t)
 >   declUnif _ = Nothing
 >   defnUnif = DEFN
-
+> -}

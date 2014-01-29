@@ -14,15 +14,17 @@
 >   fmap = (<*>) . pure
 
 > class Traversable f => HalfZip f where
->   halfZipWith :: (a -> b -> Maybe c) -> f a -> f b -> Maybe (f c)
->   halfZipWith f as bs =  halfZip as bs >>= traverse (uncurry f)
->   halfZip :: f a -> f b -> Maybe (f (a, b))
->   halfZip = halfZipWith $ \ a b -> Just (a, b)
+>   halfZipWith :: Alternative i => (a -> b -> i c) -> f a -> f b -> i (f c)
+>   halfZipWith f as bs = case halfZip as bs of
+>     Nothing   -> empty
+>     Just abs  -> traverse (uncurry f) abs
+>   halfZip :: Alternative i => f a -> f b -> i (f (a, b))
+>   halfZip = halfZipWith (curry pure)
 
 > instance HalfZip [] where
 >   halfZipWith f [] [] = pure []
 >   halfZipWith f (a : as) (b : bs) = (:) <$> f a b <*> halfZipWith f as bs
->   halfZipWith f _ _ = Nothing
+>   halfZipWith f _ _ = empty
 
 > data Bwd x
 >   = B0 | Bwd x :< x deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
