@@ -1,0 +1,40 @@
+Some thoughts about the syntax of Frank. (Conor, 15 May)
+
+
+(1) Document structure
+
+Frank is a literate programming language, Markdown-style. One delivery
+mode is to translate Markdown+Frank to HTML+JavaScript. There is a
+tension between three views of a document: its raw ascii source, its
+rendering for developers (where we read the code), and its rendering
+for users (where user interaction causes code to be executed). We
+should have some way to fence off code, somehow distinguishing whether
+or not the code should be displayed and whether or not the code is
+alive. Modifying these statuses should be local to the fence, rather
+than necessitating reindentation or some more pervasive intervention.
+Similarly, we should be clear which text is "meta" (documenting the
+code) and which is "object" (contributing to the user experience).
+
+
+(2) Indentation
+
+The only indentation which should ever matter is the distance from the
+far left to the first non-whitespace character. A line of indentation
+i subordinates all the lines following until the next line of
+indentation <= i (where a blank line is infinitely indented). A
+subordinated line means the same as the horizontal continuation of the
+subordinating line unless and until the layout herald is encountered.
+There is one layout herald, perhaps "-:". The layout herald collects the
+block of subordinated lines, with any text right of the layout herald considered
+to be infinitely indented.
+
+
+(3) Lexing
+
+Lexically, the only characters which stand as individual tokens are
+
+  ()[]{},;|
+
+with all other tokens delimited by whitespace.
+
+

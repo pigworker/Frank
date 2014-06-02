@@ -6,5 +6,9 @@ cabal-dev
 *.chi
 *.chs.h
 *.hers
+*.aux
+*.log
+*.pdf
+*.gz
 frank
 .virthualenv
