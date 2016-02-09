@@ -1,0 +1,292 @@
+\documentclass{article}
+
+\usepackage{a4wide}
+\usepackage{upgreek}
+\usepackage{latexsym}
+\usepackage{amsmath}
+\usepackage{stmaryrd}
+\usepackage{mathabx}
+
+\parskip 0.1in
+\parindent 0in
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Inference Rules (some ancient macros by Conor)                        %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newlength{\rulevgap}
+\setlength{\rulevgap}{0.05in}
+\newlength{\ruleheight}
+\newlength{\ruledepth}
+\newsavebox{\rulebox}
+\newlength{\GapLength}
+\newcommand{\gap}[1]{\settowidth{\GapLength}{#1} \hspace*{\GapLength}}
+\newcommand{\dotstep}[2]{\begin{tabular}[b]{@{}c@{}}
+                         #1\\$\vdots$\\#2
+                         \end{tabular}}
+\newlength{\fracwid}
+\newcommand{\dotfrac}[2]{\settowidth{\fracwid}{$\frac{#1}{#2}$}
+                         \addtolength{\fracwid}{0.1in}
+                         \begin{tabular}[b]{@{}c@{}}
+                         $#1$\\
+                         \parbox[c][0.02in][t]{\fracwid}{\dotfill} \\
+                         $#2$\\
+                         \end{tabular}}
+\newcommand{\Rule}[2]{\savebox{\rulebox}[\width][b]                         %
+                              {\( \frac{\raisebox{0in} {\( #1 \)}}       %
+                                       {\raisebox{-0.03in}{\( #2 \)}} \)}   %
+                      \settoheight{\ruleheight}{\usebox{\rulebox}}          %
+                      \addtolength{\ruleheight}{\rulevgap}                  %
+                      \settodepth{\ruledepth}{\usebox{\rulebox}}            %
+                      \addtolength{\ruledepth}{\rulevgap}                   %
+                      \raisebox{0in}[\ruleheight][\ruledepth]               %
+                               {\usebox{\rulebox}}}
+\newcommand{\Case}[2]{\savebox{\rulebox}[\width][b]                         %
+                              {\( \dotfrac{\raisebox{0in} {\( #1 \)}}       %
+                                       {\raisebox{-0.03in}{\( #2 \)}} \)}   %
+                      \settoheight{\ruleheight}{\usebox{\rulebox}}          %
+                      \addtolength{\ruleheight}{\rulevgap}                  %
+                      \settodepth{\ruledepth}{\usebox{\rulebox}}            %
+                      \addtolength{\ruledepth}{\rulevgap}                   %
+                      \raisebox{0in}[\ruleheight][\ruledepth]               %
+                               {\usebox{\rulebox}}}
+\newcommand{\Axiom}[1]{\savebox{\rulebox}[\width][b]                        %
+                               {$\frac{}{\raisebox{-0.03in}{$#1$}}$}        %
+                      \settoheight{\ruleheight}{\usebox{\rulebox}}          %
+                      \addtolength{\ruleheight}{\rulevgap}                  %
+                      \settodepth{\ruledepth}{\usebox{\rulebox}}            %
+                      \addtolength{\ruledepth}{\rulevgap}                   %
+                      \raisebox{0in}[\ruleheight][\ruledepth]               %
+                               {\usebox{\rulebox}}}
+\newcommand{\RuleSide}[3]{\gap{\mbox{$#2$}} \hspace*{0.1in}               %
+                            \Rule{#1}{#3}                          %
+                          \hspace*{0.1in}\mbox{$#2$}}
+\newcommand{\AxiomSide}[2]{\gap{\mbox{$#1$}} \hspace*{0.1in}              %
+                             \Axiom{#2}                            %
+                           \hspace*{0.1in}\mbox{$#1$}}
+\newcommand{\RULE}[1]{\textbf{#1}}
+\newcommand{\hg}{\hspace{0.2in}}
+
+\begin{document}
+\title{crack 43 at types for Frank}
+\author{Conor, after a chat with Sam and Craig}
+\maketitle
+
+\section*{apology}
+
+These are my notes arising from a meeting with Sam Lindley and Craig McLaughlin, trying to remember things we thought we knew. Digging back a couple of years, it seems we're in a spiral, but whether we're convergin or diverging, I can't yet tell. What follows is, where possible, a cut-paste-alpha of 2014's crack.
+
+\section{introduction}
+
+Frank types are designed to separate the businesses of ensuring that values are compatible and that interactions are possible. Frank expressions have an operadic structure, with each operation having multiple \emph{ports} and one \emph{peg}. Ports and pegs each have an associated \emph{value} type: to put a peg in a port, their value types must be equal. Effect checking is relative to an \emph{ambient ability}, being a collection of distinct \emph{interfaces} offering services to an expression from its environment. A peg is labelled by its \emph{requirements} of the ambient ability; a port is labelled by its \emph{modification} of the ambient ability. Correspondingly, we generalize from $n$-adic functions with port-to-peg dataflow to handlers, with permissions flowing peg-to-ports. Crucially, effect annotations at ports characterize the requests which must be handled.
+
+Let's have some types.
+\newcommand{\ix}[2]{\ulcorner #2 \urcorner^{#1}}
+\newcommand{\ea}{\mathcal{E}}
+\newcommand{\ixp}[2]{( #2 )^{#1}}
+\[\begin{array}{lrrll}
+\mbox{type} &
+\sigma,\tau & ::= & \{([\Delta]\tau)^\ast\to[\Sigma]\tau\} & \mbox{suspended $n$-adic computation} \\
+  && | & D\:\tau^\ast & \mbox{datatype with actual parameters} \\
+  && | & \alpha & \mbox{type variable (flexible or rigid)}\\
+\mbox{ability} &
+\Sigma & ::= & \emptyset & \mbox{purity} \\
+   && | & \ea & \mbox{abstract ambient} \\
+   && | & \Sigma, I\:\tau^\ast\quad\mbox{where $I\not\in\sigma$} & \mbox{distinct interface}\\
+\mbox{adjustment} &
+\Delta & ::= & \iota & \mbox{identity} \\
+   && | & \emptyset & \mbox{purity} \\
+   && | & \Delta + I\:\tau^\ast & \mbox{extension}\\
+   && | & \Delta - I & \mbox{suppression}\\
+\end{array}\]
+
+It makes sense for an adjustment to suppress an interface, but it does not make sense
+for an ability to have negative interfaces. Taking the trouble to separate adjustments from
+abilities is the key to making the system make sense. \textbf{2016: as I seem to keep forgetting}.
+
+
+\section{abilities and adjustments}
+
+Let us identify abilities up to permutation of their interfaces.
+Let $\Sigma-I$ be the ability given by removing any $I$ interface from $\Sigma$, so that the operation
+\[
+\Sigma + I\;\vec{\tau} = \Sigma-I,I\:\vec{\tau}
+\]
+is well defined. Note that if $\Sigma, I\:\vec{\tau}$ is a valid ability, then $\Sigma + I\:\vec{\tau} = \Sigma, I\:\vec{\tau}$.
+
+Adjustments form a monoid with identity $\iota$, thus,
+\[
+\Delta + \iota = \Delta \qquad
+\Delta + \emptyset = \emptyset \qquad
+\Delta + (\Delta' + I \:\vec{\tau}) = (\Delta+\Delta'),  I \:\vec{\tau}\qquad
+\Delta + (\Delta - I) = (\Delta + \Delta) - I
+\]
+acting on abilities thus:
+\[
+\Sigma + \iota = \Sigma \qquad
+\Sigma + \emptyset = \emptyset \qquad
+\Sigma + (\Delta + I \:\vec{\tau}) = (\Sigma + \Delta) + I\:\vec{\tau} \qquad
+\Sigma + (\Delta - I) = (\Sigma + \Delta) - I
+\]
+That is, the rightmost $I$-adjustment is the one which actually happens.
+We may keep adjustments normalized by dropping all but the rightmost $I$-adjustment for each $I$. Normalized adjustments are then identified up to permutation.
+
+
+Abilities also enjoy a partial ordering generated as follows
+\[
+\Axiom{\emptyset\subseteq\Sigma} \qquad
+\Axiom{\ea\subseteq\ea} \qquad
+\Rule{\Sigma\subseteq\Sigma'}
+  {\Sigma, I\:\vec{\tau}\subseteq\Sigma',I\:\vec{\tau}}
+\]
+Moreover, we may readily check that the adjustment action is monotonic. The
+following is admissible:
+\[
+\Rule{\Sigma\subseteq\Sigma'}{\Sigma+\Delta\subseteq\Sigma'+\Delta}
+\]
+
+\textbf{Remark.}~The need for (right) monotonicity is why the ordering admits only $\ea\subseteq\ea$, with $\ea\not\subseteq\ea,I\:\vec{\tau}_0$. We need only consider
+acting on both sides by $(\iota,I\:\vec{\tau}_1)\cdot$, where $\vec{\tau}_0\neq\vec{\tau}_1$, to see dangerous
+shadowing which would really bite us if we retain a `most local handler for a given operator' approach. A (desirable?) alternative approach is to work in the category whose objects are abilities and whose morphisms are ability embeddings, which might correspond operationally to the explicit passing of handler tables.
+
+\textbf{Different remark.}~ The ability ordering is also stable under substitution for the ambient.
+\[
+  \Rule{\Sigma_0\subseteq\Sigma_1}
+       {\Sigma_0[\Sigma/\ea]\subseteq\Sigma_1[\Sigma/\ea]}
+\]
+This substitution closely resembles the action of adjustments, but they are different. Types of suspended computations have pegs which may also mention $\ea$. A large part of our confusion has been caused by this similarity. What is the role of polymorphism (abstracting and instantiating $\ea$) versus the flexibility which arises simply by working with adjustment actions instead of absolute abilities? It's a key question.
+
+
+\section{datatypes}
+
+A datatype is given by a declaration
+\[
+\mathsf{data}\:D\:\vec{\alpha}\; \{\ix{|i}{d_i \ixp{j}{\tau_{ij}}}\}
+\]
+That is, it is explicitly parametrized by variables standing for value types and given by a possibly empty collection of constructor templates. The same constructor name may be used in multiple datatypes.
+
+For the moment, let us consider effect-monomorphic datatypes, requiring the abilities mentioned in any
+computation types within the $\tau_{ij}$ to start with $\emptyset$, rather than $\ea$. We can review this position once we start to add polymorphism.
+
+\section{interfaces}
+
+An interface is given by a declaration
+\[
+\mathsf{interface}\:I\:\vec{\alpha}\; \{\ix{|i}{c_i \ixp{j}{\sigma_{ij}}\:\to \tau_j}\}
+\]
+It is parametrized explicitly by value types and given by a collection of commands, each with any number of
+parameter types and exactly one output type. Command names must be unique to a given interface.
+
+As with datatypes, let us presume for the moment that $\ea$ is nowhere to be found.
+
+\section{monomorphic typing}
+
+Contexts assign types to variables
+\newcommand{\hab}{\!:\!}
+\[\begin{array}{rrll}
+\Gamma & ::= & \cdot & \mbox{empty} \\
+  & | & \Gamma, x\hab \tau & \mbox{adding a thing} \\
+\end{array}\]
+
+Let's have some terms. Syntax is negotiable and sugarable. What's not negotiable is that
+we must be able to distinguish mention from invocation.
+\[\begin{array}{rrrll}
+\mbox{terms} &
+s,t & ::= & e & \mbox{eliminations} \\
+  && | & \{\ix{|\ast}{r^\ast \to t}\} & \mbox{suspension} \\
+  && | & k\:t^\ast & \mbox{construction} \\
+\mbox{eliminations} &
+e,f & ::= & x & \mbox{mention} \\
+  && | & c & \mbox{command} \\
+  && | & f!s^\ast & \mbox{usage} \\
+  && | & e\to x;f  & \mbox{sequence} \\
+\mbox{matchings} &
+m & ::= & r^\ast \to t & \mbox{matching} \\
+\mbox{requests} &
+r & ::= & p & \mbox{pattern} \\
+  && | & \{c\:p^\ast \to x\} & \mbox{handler} \\
+  && | & \{x\} & \mbox{yield} \\
+\mbox{patterns} &
+p & ::= & x & \mbox{naming} \\
+  && | & d\:p^\ast & \mbox{inspection} \\
+\end{array}\]
+
+\newcommand{\turn}[1]{\left[#1\right]\!\!-}
+
+\[\begin{array}{c}
+\framebox{$\Gamma \turn\Sigma \tau \ni t$} \medskip\\
+
+\Rule{\Gamma\turn\Sigma e\in\sigma}
+     {\Gamma\turn\Sigma \tau\ni e}\sigma=\tau\qquad
+\Rule{\ix{i}{\Gamma\turn\Sigma \sigma_i[\vec\tau/\vec\alpha] \ni s_i}}
+     {\Gamma\turn\Sigma D\:\vec{\tau}\ni d\:\vec{s}}\;
+     d\:\ixp{i}{\sigma_i} \in D\:\vec{\alpha}\\
+\Rule{\ix{ij}{\Gamma_{ij}\turn\Sigma [\Delta_j]\sigma_j\ni r_{ij}}\quad
+      \ix{i}{\Gamma\ix{j}{\uplus\Gamma_{ij}} \turn\Sigma \tau\ni t_i}}
+     {\Gamma\turn\_ \{\ixp{j}{[\Delta_j]\sigma_j}\to[\Sigma]\tau\} \ni
+       \{\ix{|i}{\ix{j}{r_{ij}}\to t_i}\}}
+\end{array}\]
+For terms, note that the ambient ability pushes inside data constructions, but plays no role in the checking of suspended computations. The latter are known to be pure until used.
+
+
+\[\begin{array}{c}
+\framebox{$\Gamma \turn\Sigma e\in\sigma$} \medskip\\
+
+\Axiom{\Gamma,x\hab\sigma,\Gamma' \turn\Sigma x \in \sigma} \\
+\Axiom{\Gamma\turn\Sigma
+   c\in\{\ixp{i}{[\iota]\sigma_i}\to
+      ([\emptyset,I\:\vec\alpha]\tau)\}
+   [\vec\tau/\vec\alpha]}\;
+  c\ixp{i}{\sigma_i}\to\tau\in I\:\vec\alpha\wedge I\:\vec\tau\in\Sigma \\
+\Rule{\Gamma\turn\Sigma f\in\ixp{i}{[\Delta_i]\sigma_i}\to [\Sigma']\tau
+    \quad \Sigma'\subseteq\Sigma\quad
+    \ix{i}{\Gamma\turn{\Sigma+\Delta_i} \sigma_i\ni s_i}}
+     {\Gamma\turn\Sigma f!\vec{s}\in\tau}\\
+\Rule{\Gamma\turn\Sigma e\in\sigma\quad
+      \Gamma,x\hab\sigma\turn\Sigma f\in\tau}
+     {\Gamma\turn\Sigma e\to x;f\in\tau}
+\end{array}\]
+Variables have the type the context says they do. Commands monomorphically require the availability of the interface to which they belong. (We could allow commands to demand the presence of other interfaces, notably aborting. Some other time.) In general, $n$-adic usage checks that the ambient satisfies the peg requirement, then adjusts the ambient at each port. There's no polymorphism here.
+
+\[\begin{array}{c}
+\framebox{$\Gamma \turn\Sigma [\Delta]\tau \ni r$} \medskip\\
+
+\Axiom{x\hab\{\to[\Sigma+\Delta]\tau\}\turn\Sigma [\Delta]\tau \ni\{x\}}
+\qquad
+\Rule{\Gamma \vdash \tau \ni p}
+     {\Gamma \turn\Sigma [\Delta]\tau \ni p}
+\\
+\Rule{\ix{i}{\Gamma_i\vdash \sigma_i[\vec\tau/\vec\alpha]\ni p_i}}
+     {\ix{i}{\Gamma_i\uplus}x\hab\{([\iota]\sigma[\vec\tau/\vec\alpha])\to
+                [\Sigma+\Delta] \tau\}
+       \turn\Sigma [\Delta]\tau \ni \{c\:\vec{p}\to x\}}
+  \; c\ixp{i}{\sigma_i}\to\sigma\in I\:\vec\alpha\wedge I\:\vec\tau\in\emptyset+\Delta \\
+\end{array}\]
+What may a continuation at a given port seek to do? Why, anything that the handler is allowed to do, modified by the adjustment for that port. In particular, that's the most liberal thing that allows the continuation to be run in the same port! The continuation is not itself a handler, so it does not adjust the ability at its own port.
+
+\[\begin{array}{c}
+\framebox{$\Gamma \vdash\tau \ni p$} \medskip\\
+
+\Axiom{x\hab\tau \vdash \tau\ni p}
+\\
+\Rule{\ix{i}{\Gamma_i\vdash \sigma_i[\vec\tau/\vec\alpha]\ni p_i}}
+     {\ix{i}{\Gamma_i\uplus}\cdot \vdash
+       D\:\vec\tau \ni d\:\vec{p}}
+  \; d\ixp{i}{\sigma_i}\in D\:\vec\alpha \\
+\end{array}\]
+
+
+Note that we can define things like pipe, state and the default-\emph{value} abort-handler as ``first-order functions'' in the sense that their ports do not trade in higher-order values. They work regardless of the ambient ability, but not by polymorphism in the ambient ability: rather by monomorphic adjustment.
+
+It's the truly ``higher-order'' operations, trading in suspended computations, which need ability polymorphism to establish the relationship between the peg abilities of outer and inner computations. E.g., to say that the suspended branches of an `if' get the same ability as the whole `if' requires abstraction over abilities at places outer than the outermost peg.
+
+\section{polymorphism}
+
+Everything in sight is stable under substitution: of types for type variables, of abilities for the abstract ability. We may thus allow polymorphic functions with explicit declarations.
+Syntactically, we may deploy empty space to our best tactical advantage: it stands for the abstract ambient in an ability and for the identity in an adjustment. Type schemes have a quantifier prefix abstracting over any number of types and over the abstract ability. Instantiation picks suitable types for type variables via the usual unification technology, but the abstract ambient is always instantiated with the actual ambient.
+
+Note that if the only occurrence of the abstract ambient is at the tip of the top level peg, we may perfectly well give an ability-monomorphic type. That's because if $\ea\not\in\Delta$, then
+\[(\ea+\Delta)[\Sigma/\ea]=\Sigma+\Delta\subseteq\Sigma \;\;\Leftrightarrow\;\; (\emptyset+\Delta)[\Sigma/\ea]=\emptyset+\Delta\subseteq\Sigma\]
+
+
+\end{document}

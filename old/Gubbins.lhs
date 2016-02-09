@@ -141,7 +141,8 @@ Fish...
 %%%%% Missing Traversables                                               %%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+> {-
 > instance Traversable ((,) a) where
 >   hiding instance Functor
 >   traverse f (a, b) = (| ~a, f b|)
-
+> -}
